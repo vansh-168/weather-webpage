@@ -7,9 +7,19 @@ import type {
   WeatherData,
 } from '../types/weather'
 
-const OWM_API_KEY = import.meta.env.VITE_OPENWEATHERMAP_API_KEY
+// A small serverless proxy (see ../../weather-proxy) holds the real
+// OpenWeatherMap API key server-side, so it never ships in this client bundle.
+const PROXY_URL =
+  import.meta.env.VITE_WEATHER_PROXY_URL ?? 'https://weather-webpage-proxy.vercel.app/api/proxy'
 
-const OWM_BASE_URL = 'https://api.openweathermap.org/data/2.5'
+function buildProxyUrl(path: string, params: Record<string, string>): string {
+  const url = new URL(PROXY_URL)
+  url.searchParams.set('path', path)
+  for (const [key, value] of Object.entries(params)) {
+    url.searchParams.set(key, value)
+  }
+  return url.toString()
+}
 
 interface OwmCondition {
   id: number
@@ -36,16 +46,12 @@ interface OwmForecastResponse {
   list: OwmForecastEntry[]
 }
 
-function assertApiKey() {
-  if (!OWM_API_KEY) {
-    throw new Error(
-      'Missing OpenWeatherMap API key. Set VITE_OPENWEATHERMAP_API_KEY in your .env file.',
-    )
-  }
-}
-
 async function fetchCurrentWeather(coords: Coordinates, units: Units) {
-  const url = `${OWM_BASE_URL}/weather?lat=${coords.lat}&lon=${coords.lon}&units=${units}&appid=${OWM_API_KEY}`
+  const url = buildProxyUrl('data/2.5/weather', {
+    lat: String(coords.lat),
+    lon: String(coords.lon),
+    units,
+  })
   const res = await fetch(url)
   if (!res.ok) {
     throw new Error(`Failed to fetch current weather (${res.status})`)
@@ -54,7 +60,11 @@ async function fetchCurrentWeather(coords: Coordinates, units: Units) {
 }
 
 async function fetchForecast(coords: Coordinates, units: Units) {
-  const url = `${OWM_BASE_URL}/forecast?lat=${coords.lat}&lon=${coords.lon}&units=${units}&appid=${OWM_API_KEY}`
+  const url = buildProxyUrl('data/2.5/forecast', {
+    lat: String(coords.lat),
+    lon: String(coords.lon),
+    units,
+  })
   const res = await fetch(url)
   if (!res.ok) {
     throw new Error(`Failed to fetch forecast (${res.status})`)
@@ -103,7 +113,10 @@ interface OwmAirPollutionResponse {
 
 async function fetchAirQuality(coords: Coordinates): Promise<AirQuality | null> {
   try {
-    const url = `${OWM_BASE_URL}/air_pollution?lat=${coords.lat}&lon=${coords.lon}&appid=${OWM_API_KEY}`
+    const url = buildProxyUrl('data/2.5/air_pollution', {
+      lat: String(coords.lat),
+      lon: String(coords.lon),
+    })
     const res = await fetch(url)
     if (!res.ok) return null
     const data = (await res.json()) as OwmAirPollutionResponse
@@ -130,9 +143,7 @@ export interface GeocodedCity extends Coordinates {
 }
 
 export async function geocodeCity(query: string): Promise<GeocodedCity | null> {
-  assertApiKey()
-
-  const url = `https://api.openweathermap.org/geo/1.0/direct?q=${encodeURIComponent(query)}&limit=1&appid=${OWM_API_KEY}`
+  const url = buildProxyUrl('geo/1.0/direct', { q: query, limit: '1' })
   const res = await fetch(url)
   if (!res.ok) {
     throw new Error(`Failed to look up city (${res.status})`)
@@ -152,8 +163,6 @@ export async function fetchWeatherData(
   // such as the one returned by geocodeCity for a search result.
   locationOverride?: LocationInfo,
 ): Promise<WeatherData> {
-  assertApiKey()
-
   const [current, forecast, airQuality] = await Promise.all([
     fetchCurrentWeather(coords, units),
     fetchForecast(coords, units),

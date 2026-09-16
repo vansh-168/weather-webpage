@@ -1,7 +1,7 @@
 /// <reference types="vite/client" />
 
 interface ImportMetaEnv {
-  readonly VITE_OPENWEATHERMAP_API_KEY: string
+  readonly VITE_WEATHER_PROXY_URL?: string
 }
 
 interface ImportMeta {
