@@ -8,7 +8,7 @@ interface UnitToggleProps {
 
 export function UnitToggle({ units, onChange }: UnitToggleProps) {
   return (
-    <div className="flex overflow-hidden rounded-full border border-white/30 bg-white/20 text-sm backdrop-blur-md">
+    <div className="flex shrink-0 overflow-hidden rounded-full border border-white/30 bg-white/20 text-sm backdrop-blur-md">
       {(['metric', 'imperial'] as const).map((option) => (
         <button
           key={option}
