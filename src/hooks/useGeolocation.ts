@@ -2,46 +2,37 @@ import { useCallback, useState } from 'react'
 import type { Coordinates } from '../types/weather'
 
 interface GeolocationState {
-  coords: Coordinates | null
-  error: string | null
   loading: boolean
+  error: string | null
 }
 
-export function useGeolocation() {
-  const [state, setState] = useState<GeolocationState>({
-    coords: null,
-    error: null,
-    loading: false,
-  })
+const MESSAGES: Record<number, string> = {
+  1: 'Location access is blocked. Allow it in your browser settings, or search for a city instead.',
+  2: "Your location couldn't be found. Try searching for a city instead.",
+  3: 'Finding your location took too long. Please try again.',
+}
+
+/** Asks for the visitor's position only when they press the location button. */
+export function useGeolocation(onLocated: (coords: Coordinates) => void) {
+  const [state, setState] = useState<GeolocationState>({ loading: false, error: null })
 
   const locate = useCallback(() => {
     if (!navigator.geolocation) {
-      setState({
-        coords: null,
-        error: 'Geolocation is not supported by this browser.',
-        loading: false,
-      })
+      setState({ loading: false, error: 'Your browser does not support location. Search for a city instead.' })
       return
     }
-
-    setState((prev) => ({ ...prev, loading: true, error: null }))
-
+    setState({ loading: true, error: null })
     navigator.geolocation.getCurrentPosition(
       (position) => {
-        setState({
-          coords: {
-            lat: position.coords.latitude,
-            lon: position.coords.longitude,
-          },
-          error: null,
-          loading: false,
-        })
+        setState({ loading: false, error: null })
+        onLocated({ lat: position.coords.latitude, lon: position.coords.longitude })
       },
-      (error) => {
-        setState({ coords: null, error: error.message, loading: false })
-      },
+      (error) => setState({ loading: false, error: MESSAGES[error.code] ?? error.message }),
+      { enableHighAccuracy: false, timeout: 10000, maximumAge: 10 * 60 * 1000 },
     )
-  }, [])
+  }, [onLocated])
 
-  return { ...state, locate }
+  const clearError = useCallback(() => setState((s) => ({ ...s, error: null })), [])
+
+  return { ...state, locate, clearError }
 }

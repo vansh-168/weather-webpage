@@ -1,9 +1,11 @@
+import { localDateKey, localHour } from '../lib/time'
 import type {
   AirQuality,
   Coordinates,
   DailyForecast,
-  LocationInfo,
-  Units,
+  HourlyPoint,
+  Place,
+  WeatherCondition,
   WeatherData,
 } from '../types/weather'
 
@@ -12,174 +14,192 @@ import type {
 const PROXY_URL =
   import.meta.env.VITE_WEATHER_PROXY_URL ?? 'https://weather-webpage-proxy.vercel.app/api/proxy'
 
-function buildProxyUrl(path: string, params: Record<string, string>): string {
+const TIMEOUT_MS = 12000
+
+async function request<T>(path: string, params: Record<string, string>, signal?: AbortSignal): Promise<T> {
   const url = new URL(PROXY_URL)
   url.searchParams.set('path', path)
-  for (const [key, value] of Object.entries(params)) {
-    url.searchParams.set(key, value)
+  for (const [key, value] of Object.entries(params)) url.searchParams.set(key, value)
+
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS)
+  signal?.addEventListener('abort', () => controller.abort())
+
+  let res: Response
+  try {
+    res = await fetch(url, { signal: controller.signal })
+  } catch (err) {
+    if (signal?.aborted) throw err
+    throw new Error(
+      err instanceof DOMException && err.name === 'AbortError'
+        ? 'The weather service is taking too long to respond. Please try again.'
+        : 'Network error. Check your connection and try again.',
+    )
+  } finally {
+    clearTimeout(timer)
   }
-  return url.toString()
+  if (!res.ok) throw new Error(`The weather service returned an error (${res.status}). Please try again.`)
+  return (await res.json()) as T
 }
 
-interface OwmCondition {
-  id: number
-  main: string
-  description: string
-  icon: string
-}
+const coordParams = (c: Coordinates) => ({ lat: c.lat.toFixed(4), lon: c.lon.toFixed(4) })
 
-interface OwmCurrentResponse {
+// ---- OpenWeatherMap response shapes (only the fields we use) ----
+
+interface OwmCurrent {
+  dt: number
   name: string
-  sys: { country: string }
-  main: { temp: number; feels_like: number; humidity: number }
-  wind: { speed: number }
-  weather: OwmCondition[]
+  timezone: number
+  sys: { country: string; sunrise: number; sunset: number }
+  main: { temp: number; feels_like: number; humidity: number; pressure: number }
+  visibility?: number
+  wind: { speed: number; deg?: number; gust?: number }
+  clouds: { all: number }
+  rain?: { '1h'?: number }
+  snow?: { '1h'?: number }
+  weather: WeatherCondition[]
 }
 
 interface OwmForecastEntry {
   dt: number
-  main: { temp_min: number; temp_max: number }
-  weather: OwmCondition[]
+  main: { temp: number; temp_min: number; temp_max: number }
+  pop?: number
+  weather: WeatherCondition[]
 }
 
-interface OwmForecastResponse {
+interface OwmForecast {
   list: OwmForecastEntry[]
+  city: { timezone: number }
 }
 
-async function fetchCurrentWeather(coords: Coordinates, units: Units) {
-  const url = buildProxyUrl('data/2.5/weather', {
-    lat: String(coords.lat),
-    lon: String(coords.lon),
-    units,
-  })
-  const res = await fetch(url)
-  if (!res.ok) {
-    throw new Error(`Failed to fetch current weather (${res.status})`)
-  }
-  return (await res.json()) as OwmCurrentResponse
+interface OwmAirPollution {
+  list: { main: { aqi: number }; components: AirQuality['components'] }[]
 }
 
-async function fetchForecast(coords: Coordinates, units: Units) {
-  const url = buildProxyUrl('data/2.5/forecast', {
-    lat: String(coords.lat),
-    lon: String(coords.lon),
-    units,
-  })
-  const res = await fetch(url)
-  if (!res.ok) {
-    throw new Error(`Failed to fetch forecast (${res.status})`)
-  }
-  return (await res.json()) as OwmForecastResponse
-}
-
-/** Collapses 3-hourly forecast entries into one min/max summary per day, using the midday entry's condition. */
-function groupForecastByDay(entries: OwmForecastEntry[]): DailyForecast[] {
-  const byDay = new Map<string, OwmForecastEntry[]>()
-
-  for (const entry of entries) {
-    const day = new Date(entry.dt * 1000).toISOString().slice(0, 10)
-    const existing = byDay.get(day)
-    if (existing) {
-      existing.push(entry)
-    } else {
-      byDay.set(day, [entry])
-    }
-  }
-
-  return Array.from(byDay.values())
-    .slice(0, 7)
-    .map((dayEntries) => {
-      const tempMin = Math.min(...dayEntries.map((e) => e.main.temp_min))
-      const tempMax = Math.max(...dayEntries.map((e) => e.main.temp_max))
-      const middayEntry =
-        dayEntries.find((e) => new Date(e.dt * 1000).getHours() >= 12) ??
-        dayEntries[0]
-
-      return {
-        dt: middayEntry.dt,
-        tempMin,
-        tempMax,
-        condition: middayEntry.weather[0],
-      }
-    })
-}
-
-interface OwmAirPollutionResponse {
-  list: {
-    main: { aqi: number }
-    components: { pm2_5: number; pm10: number; o3: number; no2: number }
-  }[]
-}
-
-async function fetchAirQuality(coords: Coordinates): Promise<AirQuality | null> {
-  try {
-    const url = buildProxyUrl('data/2.5/air_pollution', {
-      lat: String(coords.lat),
-      lon: String(coords.lon),
-    })
-    const res = await fetch(url)
-    if (!res.ok) return null
-    const data = (await res.json()) as OwmAirPollutionResponse
-    const reading = data.list[0]
-    if (!reading) return null
-
-    return { aqi: reading.main.aqi, components: reading.components }
-  } catch {
-    // Air quality is a supplementary feature; failures here shouldn't break the dashboard.
-    return null
-  }
-}
-
-interface OwmGeocodingResult {
+interface OwmGeoResult {
   name: string
   lat: number
   lon: number
   country: string
+  state?: string
+  local_names?: Record<string, string>
 }
 
-export interface GeocodedCity extends Coordinates {
-  name: string
-  country: string
-}
+// ---- Forecast shaping ----
 
-export async function geocodeCity(query: string): Promise<GeocodedCity | null> {
-  const url = buildProxyUrl('geo/1.0/direct', { q: query, limit: '1' })
-  const res = await fetch(url)
-  if (!res.ok) {
-    throw new Error(`Failed to look up city (${res.status})`)
+/**
+ * Groups 3-hourly entries into days using the *city's* local date (not the
+ * browser's or UTC), so e.g. Tokyo's days start at Tokyo midnight.
+ */
+function groupByDay(entries: OwmForecastEntry[], tz: number): DailyForecast[] {
+  const byDay = new Map<string, OwmForecastEntry[]>()
+  for (const entry of entries) {
+    const key = localDateKey(entry.dt, tz)
+    byDay.set(key, [...(byDay.get(key) ?? []), entry])
   }
-  const results = (await res.json()) as OwmGeocodingResult[]
-  const match = results[0]
-  return match
-    ? { lat: match.lat, lon: match.lon, name: match.name, country: match.country }
-    : null
+
+  return Array.from(byDay, ([date, day]) => {
+    // Use the entry closest to local midday as the day's representative condition.
+    const representative = day.reduce((best, e) =>
+      Math.abs(localHour(e.dt, tz) - 13) < Math.abs(localHour(best.dt, tz) - 13) ? e : best,
+    )
+    return {
+      date,
+      tempMin: Math.min(...day.map((e) => e.main.temp_min)),
+      tempMax: Math.max(...day.map((e) => e.main.temp_max)),
+      pop: Math.max(...day.map((e) => e.pop ?? 0)),
+      condition: representative.weather[0],
+    }
+  })
 }
 
-export async function fetchWeatherData(
-  coords: Coordinates,
-  units: Units,
-  // The /weather endpoint's reverse-geocoded name can be inaccurate (e.g. OWM
-  // labels some Tokyo-area stations "Japan"); prefer a name we already trust,
-  // such as the one returned by geocodeCity for a search result.
-  locationOverride?: LocationInfo,
-): Promise<WeatherData> {
+function toHourly(entries: OwmForecastEntry[]): HourlyPoint[] {
+  return entries.slice(0, 8).map((e) => ({
+    dt: e.dt,
+    temp: e.main.temp,
+    pop: e.pop ?? 0,
+    condition: e.weather[0],
+  }))
+}
+
+async function fetchAirQuality(coords: Coordinates): Promise<AirQuality | null> {
+  try {
+    const data = await request<OwmAirPollution>('data/2.5/air_pollution', coordParams(coords))
+    const reading = data.list[0]
+    return reading ? { aqi: reading.main.aqi, components: reading.components } : null
+  } catch {
+    // Air quality is supplementary; failures here must never break the dashboard.
+    return null
+  }
+}
+
+function toPlace(r: OwmGeoResult): Place {
+  return { lat: r.lat, lon: r.lon, name: r.local_names?.en ?? r.name, country: r.country, state: r.state }
+}
+
+// ---- Public API ----
+
+/** Up to 5 matching cities for the search box. Duplicate name/region/country rows are removed. */
+export async function searchCities(query: string, signal?: AbortSignal): Promise<Place[]> {
+  const results = await request<OwmGeoResult[]>('geo/1.0/direct', { q: query, limit: '5' }, signal)
+  const seen = new Set<string>()
+  return results.map(toPlace).filter((p) => {
+    const key = `${p.name}|${p.state ?? ''}|${p.country}`
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
+}
+
+/** Best-effort city name for coordinates (e.g. from geolocation). Never throws. */
+export async function reverseGeocode(coords: Coordinates): Promise<Place | null> {
+  try {
+    const [first] = await request<OwmGeoResult[]>('geo/1.0/reverse', { ...coordParams(coords), limit: '1' })
+    return first ? { ...toPlace(first), lat: coords.lat, lon: coords.lon } : null
+  } catch {
+    return null
+  }
+}
+
+/** Everything the dashboard shows, always fetched in metric units. */
+export async function fetchWeatherData(place: Place, signal?: AbortSignal): Promise<WeatherData> {
+  const params = { ...coordParams(place), units: 'metric' }
   const [current, forecast, airQuality] = await Promise.all([
-    fetchCurrentWeather(coords, units),
-    fetchForecast(coords, units),
-    fetchAirQuality(coords),
+    request<OwmCurrent>('data/2.5/weather', params, signal),
+    request<OwmForecast>('data/2.5/forecast', params, signal),
+    fetchAirQuality(place),
   ])
 
+  const tz = forecast.city?.timezone ?? current.timezone
+  const daily = groupByDay(forecast.list, tz)
+  // Make today's range include the temperature right now.
+  if (daily[0] && daily[0].date === localDateKey(current.dt, tz)) {
+    daily[0].tempMin = Math.min(daily[0].tempMin, current.main.temp)
+    daily[0].tempMax = Math.max(daily[0].tempMax, current.main.temp)
+  }
+
   return {
-    location: locationOverride ?? { name: current.name, country: current.sys.country },
+    place,
+    timezoneOffset: tz,
     current: {
-      dt: Date.now() / 1000,
+      dt: current.dt,
       temp: current.main.temp,
       feelsLike: current.main.feels_like,
       humidity: current.main.humidity,
+      pressure: current.main.pressure,
+      visibility: current.visibility ?? null,
       windSpeed: current.wind.speed,
+      windDeg: current.wind.deg ?? 0,
+      windGust: current.wind.gust ?? null,
+      clouds: current.clouds.all,
+      rainLastHour: current.rain?.['1h'] ?? null,
+      snowLastHour: current.snow?.['1h'] ?? null,
+      sunrise: current.sys.sunrise,
+      sunset: current.sys.sunset,
       condition: current.weather[0],
     },
-    daily: groupForecastByDay(forecast.list),
+    hourly: toHourly(forecast.list),
+    daily,
     airQuality,
   }
 }

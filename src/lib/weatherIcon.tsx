@@ -3,28 +3,51 @@ import {
   CloudDrizzle,
   CloudFog,
   CloudLightning,
+  CloudMoon,
+  CloudMoonRain,
   CloudRain,
-  CloudSnow,
+  CloudSun,
+  CloudSunRain,
+  Cloudy,
+  Moon,
+  Snowflake,
   Sun,
   type LucideIcon,
 } from 'lucide-react'
+import type { WeatherCondition } from '../types/weather'
 
-const ICONS_BY_CONDITION: Record<string, LucideIcon> = {
+// Keyed by OpenWeatherMap icon code ("01d", "10n", …), which already encodes
+// both the condition group and day/night.
+const BY_CODE: Record<string, LucideIcon> = {
+  '01d': Sun,
+  '01n': Moon,
+  '02d': CloudSun,
+  '02n': CloudMoon,
+  '03d': Cloud,
+  '03n': Cloud,
+  '04d': Cloudy,
+  '04n': Cloudy,
+  '09d': CloudDrizzle,
+  '09n': CloudDrizzle,
+  '10d': CloudSunRain,
+  '10n': CloudMoonRain,
+  '11d': CloudLightning,
+  '11n': CloudLightning,
+  '13d': Snowflake,
+  '13n': Snowflake,
+  '50d': CloudFog,
+  '50n': CloudFog,
+}
+
+const BY_MAIN: Record<string, LucideIcon> = {
   Clear: Sun,
   Clouds: Cloud,
   Rain: CloudRain,
   Drizzle: CloudDrizzle,
   Thunderstorm: CloudLightning,
-  Snow: CloudSnow,
-  Mist: CloudFog,
-  Smoke: CloudFog,
-  Haze: CloudFog,
-  Dust: CloudFog,
-  Fog: CloudFog,
-  Sand: CloudFog,
-  Ash: CloudFog,
+  Snow: Snowflake,
 }
 
-export function getWeatherIcon(conditionMain: string): LucideIcon {
-  return ICONS_BY_CONDITION[conditionMain] ?? Cloud
+export function getWeatherIcon(condition: WeatherCondition): LucideIcon {
+  return BY_CODE[condition.icon] ?? BY_MAIN[condition.main] ?? CloudFog
 }

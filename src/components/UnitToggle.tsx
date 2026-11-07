@@ -6,20 +6,31 @@ interface UnitToggleProps {
   onChange: (units: Units) => void
 }
 
+const OPTIONS: { value: Units; label: string; name: string }[] = [
+  { value: 'metric', label: '°C', name: 'Celsius' },
+  { value: 'imperial', label: '°F', name: 'Fahrenheit' },
+]
+
 export function UnitToggle({ units, onChange }: UnitToggleProps) {
   return (
-    <div className="flex shrink-0 overflow-hidden rounded-full border border-white/30 bg-white/20 text-sm backdrop-blur-md">
-      {(['metric', 'imperial'] as const).map((option) => (
+    <div
+      role="group"
+      aria-label="Temperature units"
+      className="inline-flex shrink-0 gap-1 rounded-full border border-white/20 bg-white/10 p-1 backdrop-blur-xl"
+    >
+      {OPTIONS.map((option) => (
         <button
-          key={option}
+          key={option.value}
           type="button"
-          onClick={() => onChange(option)}
+          onClick={() => onChange(option.value)}
+          aria-pressed={units === option.value}
+          aria-label={option.name}
           className={cn(
-            'px-3 py-1.5 font-medium text-white transition',
-            units === option ? 'bg-white/30' : 'hover:bg-white/10',
+            'min-w-11 rounded-full px-3 py-1.5 text-sm font-semibold transition',
+            units === option.value ? 'bg-white text-slate-900 shadow' : 'text-white/80 hover:bg-white/10 hover:text-white',
           )}
         >
-          {option === 'metric' ? '°C' : '°F'}
+          {option.label}
         </button>
       ))}
     </div>

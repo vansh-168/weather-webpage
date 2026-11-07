@@ -2,12 +2,26 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>weather-webpage</title>
+    <title>Skycast — Weather forecast, air quality & sunrise times</title>
+    <meta name="description" content="Live weather for any city: current conditions, a 24-hour chart, 5-day forecast, air quality, wind, humidity and sunrise/sunset times." />
+    <meta name="theme-color" content="#1e3a8a" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Skycast — Weather forecast & air quality" />
+    <meta property="og:description" content="Current conditions, a 24-hour chart, 5-day forecast, air quality and sunrise times for any city." />
+    <meta property="og:url" content="https://weather-webpage-alpha.vercel.app/" />
+    <meta name="twitter:card" content="summary" />
+
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="preconnect" href="https://weather-webpage-proxy.vercel.app" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@200;300;400;500;600;700;800&display=swap" rel="stylesheet" />
   </head>
   <body>
     <div id="root"></div>
+    <noscript>Skycast needs JavaScript to load the weather.</noscript>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
