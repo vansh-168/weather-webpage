@@ -6,6 +6,10 @@ export function Footer() {
         <a href="https://openweathermap.org/" target="_blank" rel="noopener noreferrer" className="underline underline-offset-2 hover:text-white">
           OpenWeatherMap
         </a>
+        , air quality from{' '}
+        <a href="https://open-meteo.com/" target="_blank" rel="noopener noreferrer" className="underline underline-offset-2 hover:text-white">
+          Open-Meteo
+        </a>
         . Built by{' '}
         <a href="https://vansh-168.github.io/" target="_blank" rel="noopener noreferrer" className="underline underline-offset-2 hover:text-white">
           Vansh Tyagi

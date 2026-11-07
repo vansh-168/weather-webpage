@@ -5,7 +5,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Project Objective
 Build a responsive, modern weather dashboard fetching real-time weather and air quality data using the OpenWeatherMap API. Branded "Skycast". Key capabilities: city search with suggestions, on-demand geolocation (reverse-geocoded name), recent cities, instant °C/°F toggle, a 24-hour chart, multi-day forecast with range bars, detail tiles (feels like, humidity/dew point, wind compass, precipitation, pressure, visibility), a sun-position card, air quality, shareable `?lat&lon&name&country` URLs, and backgrounds that react to condition and day/night.
 
-Air quality originally targeted the OpenAQ API, but OpenAQ v3 requires an `X-API-Key` header on every request, including the browser's CORS preflight (`OPTIONS`) — which browsers never attach custom headers to. Their gateway rejects the preflight with 401 before the real request can fire, so OpenAQ v3 cannot be called from a pure static frontend without a backend proxy. Air quality now uses OpenWeatherMap's own Air Pollution API instead (same key, already proven CORS-friendly, and it returns a ready-made 1-5 AQI index).
+Air quality originally targeted the OpenAQ API, but OpenAQ v3 requires an `X-API-Key` header on every request, including the browser's CORS preflight (`OPTIONS`) — which browsers never attach custom headers to. Their gateway rejects the preflight with 401 before the real request can fire, so OpenAQ v3 cannot be called from a pure static frontend without a backend proxy. Air quality then used OpenWeatherMap's Air Pollution API, but it badly understates polluted cities (New Delhi PM2.5 ~45 µg/m³ vs ~115+ from CAMS/ground reports in Nov 2026) and its 1–5 index is unfamiliar. It now uses the **Open-Meteo Air Quality API** (`air-quality-api.open-meteo.com`, CAMS model): no key, CORS `*`, called directly from the browser (not via the proxy), returning the standard US AQI (0–500) shown with EPA categories. Open-Meteo's free tier is for non-commercial use and requires attribution (shown in the card and footer).
 
 ## Deployment
 
@@ -30,7 +30,7 @@ There is no test runner configured in this project.
 
 No environment variables are required to run this frontend — see the Deployment section above for why. `VITE_WEATHER_PROXY_URL` (optional, in `.env.example`) only needs setting if you're pointing at a different proxy deployment.
 
-`fetchAirQuality` must never throw — on any failure it resolves to `null` and the air quality card is simply omitted, rather than breaking the rest of the dashboard.
+`fetchAirQuality` (Open-Meteo) must never throw — on any failure it resolves to `null` and the air quality card is simply omitted, rather than breaking the rest of the dashboard.
 
 
 ## Code Style

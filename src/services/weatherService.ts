@@ -72,8 +72,14 @@ interface OwmForecast {
   city: { timezone: number }
 }
 
-interface OwmAirPollution {
-  list: { main: { aqi: number }; components: AirQuality['components'] }[]
+interface OpenMeteoAirQuality {
+  current?: {
+    us_aqi: number | null
+    pm2_5: number | null
+    pm10: number | null
+    ozone: number | null
+    nitrogen_dioxide: number | null
+  }
 }
 
 interface OwmGeoResult {
@@ -122,11 +128,27 @@ function toHourly(entries: OwmForecastEntry[]): HourlyPoint[] {
   }))
 }
 
+// Air quality comes from Open-Meteo (CAMS atmospheric model), not
+// OpenWeatherMap: OWM's Air Pollution API badly understates polluted cities
+// (e.g. New Delhi PM2.5 ~45 µg/m³ when Open-Meteo and ground reports show
+// ~115+), and its 1–5 index is unfamiliar. Open-Meteo returns the standard US
+// AQI, needs no API key and allows browser requests, so no proxy is involved.
+const AIR_QUALITY_URL = 'https://air-quality-api.open-meteo.com/v1/air-quality'
+
 async function fetchAirQuality(coords: Coordinates): Promise<AirQuality | null> {
+  const url = new URL(AIR_QUALITY_URL)
+  url.searchParams.set('latitude', coords.lat.toFixed(4))
+  url.searchParams.set('longitude', coords.lon.toFixed(4))
+  url.searchParams.set('current', 'us_aqi,pm2_5,pm10,ozone,nitrogen_dioxide')
   try {
-    const data = await request<OwmAirPollution>('data/2.5/air_pollution', coordParams(coords))
-    const reading = data.list[0]
-    return reading ? { aqi: reading.main.aqi, components: reading.components } : null
+    const res = await fetch(url, { signal: AbortSignal.timeout(TIMEOUT_MS) })
+    if (!res.ok) return null
+    const c = ((await res.json()) as OpenMeteoAirQuality).current
+    if (!c || c.us_aqi === null || c.us_aqi === undefined) return null
+    return {
+      usAqi: Math.round(c.us_aqi),
+      components: { pm2_5: c.pm2_5 ?? 0, pm10: c.pm10 ?? 0, o3: c.ozone ?? 0, no2: c.nitrogen_dioxide ?? 0 },
+    }
   } catch {
     // Air quality is supplementary; failures here must never break the dashboard.
     return null

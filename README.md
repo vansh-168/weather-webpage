@@ -13,7 +13,7 @@ A weather dashboard for any city: current conditions, a 24-hour temperature char
 - **Next 24 hours** chart with rain chance, and a **multi-day forecast** with range bars
 - **Details:** feels like, humidity and dew point, wind with a compass, precipitation, pressure, visibility
 - **Sun card** showing where the sun is between sunrise and sunset, in the city's local time
-- **Air quality** index with PM2.5, PM10, O₃ and NO₂
+- **Air quality** as the standard US AQI (0–500) with PM2.5, PM10, NO₂ and O₃, from Open-Meteo (CAMS)
 - **Shareable links** (`?lat=&lon=&name=&country=`) and a Share button
 - First visit defaults to a major city in your timezone, with no location prompt
 

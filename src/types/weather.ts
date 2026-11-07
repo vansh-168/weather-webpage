@@ -56,8 +56,9 @@ export interface DailyForecast {
   condition: WeatherCondition
 }
 
+/** From Open-Meteo (CAMS model). `usAqi` is the US EPA 0–500 index. */
 export interface AirQuality {
-  aqi: number
+  usAqi: number
   components: {
     pm2_5: number
     pm10: number
